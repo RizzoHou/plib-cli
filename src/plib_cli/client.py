@@ -31,6 +31,10 @@ from .models import DownloadResult, Material, SearchPage
 
 _USER_AGENT = "plib-cli/0.1 (+https://github.com/RizzoHou/plib-cli)"
 _FILENAME_RE = re.compile(r"filename\*?=(?:UTF-8'')?\"?([^\";]+)\"?", re.IGNORECASE)
+# Safety cap on auto-pagination so a pathological query can't loop forever. A
+# course-material result set is realistically well under this; if a search ever
+# hits it, the response's count stays below total, which signals the cap.
+_MAX_SEARCH_PAGES = 50
 
 
 class PlibClient:
@@ -166,6 +170,62 @@ class PlibClient:
         qs = "&".join(f"{k}={quote(str(v))}" for k, v in params.items())
         html = self._get_html(f"/search?{qs}")
         return parsers.parse_search(html, query=query, page=page, base_url=self.base_url)
+
+    def search_all(
+        self,
+        query: str,
+        *,
+        type: str | None = None,
+        time: str | None = None,
+        sort: str = "relevance",
+        limit: int | None = None,
+        max_pages: int = _MAX_SEARCH_PAGES,
+    ) -> SearchPage:
+        """Search across all result pages and aggregate them into one page.
+
+        The site paginates ~10 results per page; a single :meth:`search` call
+        returns only one of them, so the default CLI uses this to surface the
+        whole result set the way the browser does. Search is quota-free, so the
+        extra HTTP requests are cheap. Results are de-duplicated by id (the
+        site's ordering can shift between requests). Stops at ``limit`` if given,
+        at ``total`` once reached, when a page adds nothing new, or at
+        ``max_pages`` — a count below ``total`` in the result signals the cap.
+        """
+        first = self.search(query, type=type, time=time, sort=sort, page=1)
+        total = first.total
+        seen: set[int] = set()
+        results = []
+        for r in first.results:
+            if r.id not in seen:
+                seen.add(r.id)
+                results.append(r)
+
+        page = 1
+        while True:
+            if limit is not None and len(results) >= limit:
+                break
+            if total is not None and len(results) >= total:
+                break
+            if page >= max_pages:
+                break
+            page += 1
+            nxt = self.search(query, type=type, time=time, sort=sort, page=page)
+            if not nxt.results:
+                break
+            added = 0
+            for r in nxt.results:
+                if r.id not in seen:
+                    seen.add(r.id)
+                    results.append(r)
+                    added += 1
+            # An all-duplicate page means the site stopped advancing (ignored
+            # the page param or wrapped) — stop rather than loop on it.
+            if added == 0:
+                break
+
+        if limit is not None:
+            results = results[:limit]
+        return SearchPage(query=query, page=1, total=total, results=results)
 
     def material(self, material_id: int) -> Material:
         html = self._get_html(f"/material/{material_id}")

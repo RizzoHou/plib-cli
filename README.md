@@ -30,9 +30,9 @@ A P-Lib account is a self-registered email/password (not PKU IAAA). Register at 
 ## Usage
 
 ```bash
-plib search "高等数学"                       # search (JSON when piped, table in a terminal)
+plib search "高等数学"                       # search all pages (JSON when piped, table in a terminal)
 plib search "线性代数" --type 试卷 --sort downloads --limit 5
-plib search "数据结构" --page 2 --time year
+plib search "数据结构" --page 2 --time year  # one specific page only
 plib show 727                                # full detail for one material
 plib download 1544 -o ./materials            # download by id
 plib download 1544 1571 1313                 # several at once
@@ -46,7 +46,8 @@ Output format is **JSON when stdout is piped** (agent use) and a **human table**
 - `--type` — one of `习题 其他 汇编 笔记 答案 试卷 课件 课本`
 - `--time` — `all` (default) `week` `month` `year`
 - `--sort` — `relevance` (default) `newest` `downloads` `views` `likes` `title` `comments`
-- `--page`, `--limit`
+- `--page` — by default `search` **auto-paginates** and returns every result (the site shows ~10 per page); pass `--page N` to fetch just one page
+- `--limit` — cap the number of results returned (stops paginating early)
 
 ### Download quota
 
@@ -63,7 +64,7 @@ Stable envelope on every command:
 
 Exit codes: `0` success, `1` handled error (`PlibError`), `2` bad usage. Error `code` values: `no_credentials`, `auth_failed`, `not_found`, `quota_exceeded`, `network_error`, `parse_error`.
 
-`search` → `{query, page, total, count, results:[{id, title, type, description, course, department, semester, uploader, date, downloads, views, favorites, url}]}`.
+`search` → `{query, page, total, count, results:[{id, title, type, description, course, department, semester, uploader, date, downloads, views, favorites, url}]}`. `total` is the site's full result count; `count` is how many are in `results`. In the default auto-paginate mode `count` equals `total` (or `--limit`) and `page` is `1`; a `count` below `total` means the result was capped (by `--limit` or the page safety cap).
 `show` → a material with the above plus `course_id, department_id, upload_time, file_type, files[], download_url`.
 
 ## Use from pku-captain

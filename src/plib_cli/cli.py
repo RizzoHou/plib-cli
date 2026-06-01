@@ -84,7 +84,12 @@ def _build_parser() -> argparse.ArgumentParser:
     s.add_argument(
         "--sort", choices=SORT_CHOICES, default="relevance", help="result ordering"
     )
-    s.add_argument("--page", type=int, default=1, help="result page (default: 1)")
+    s.add_argument(
+        "--page",
+        type=int,
+        default=None,
+        help="fetch only this single page (default: auto-paginate all pages)",
+    )
     s.add_argument(
         "--limit", type=int, default=None, help="cap the number of results shown"
     )
@@ -120,6 +125,16 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def _cmd_search(client: PlibClient, args) -> SearchPage:
+    # No --page → auto-paginate the whole result set (the default); an explicit
+    # --page fetches just that one page.
+    if args.page is None:
+        return client.search_all(
+            args.query,
+            type=args.type,
+            time=TIME_CHOICES[args.time],
+            sort=args.sort,
+            limit=args.limit,
+        )
     page = client.search(
         args.query,
         type=args.type,
@@ -157,7 +172,7 @@ def _emit(data, as_json: bool, args) -> None:
         print(json.dumps({"ok": True, "data": payload}, ensure_ascii=False, indent=2))
         return
     if args.command == "search":
-        _print_search_table(data)
+        _print_search_table(data, args)
     elif args.command == "show":
         _print_material(data)
     else:
@@ -177,9 +192,15 @@ def _emit_error(exc: PlibError, as_json: bool) -> None:
         print(f"error ({exc.code}): {exc}", file=sys.stderr)
 
 
-def _print_search_table(page: SearchPage) -> None:
+def _print_search_table(page: SearchPage, args) -> None:
     total = page.total if page.total is not None else "?"
-    print(f'"{page.query}" — page {page.page}, {len(page.results)} shown of {total}')
+    # In aggregate mode (no --page) the line is just "N of total"; when a single
+    # page was explicitly requested, name it.
+    if getattr(args, "page", None) is not None:
+        header = f'"{page.query}" — page {page.page}, {len(page.results)} of {total}'
+    else:
+        header = f'"{page.query}" — {len(page.results)} of {total} results'
+    print(header)
     for r in page.results:
         meta = " · ".join(x for x in (r.type, r.course, r.semester) if x)
         print(f"  [{r.id}] {r.title}")
