@@ -16,3 +16,9 @@ build/
 
 # Local CLI state (cookie jar, quota) if it ever lands in-tree
 .cache/
+
+# Claude Code / local-assistant artifacts
+CLAUDE.md
+**/CLAUDE.md
+CLAUDE.local.md
+.claude/
