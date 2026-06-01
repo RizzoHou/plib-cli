@@ -186,7 +186,14 @@ def _emit(data, as_json: bool, args) -> None:
         _print_search_table(data, args)
     elif args.command == "show":
         _print_material(data)
+    elif args.command == "quota":
+        _print_quota(data)
+    elif args.command == "login":
+        _print_login(data)
+    elif args.command == "download":
+        _print_download(data)
     else:
+        # Fallback so a future subcommand degrades to JSON rather than crashing.
         print(json.dumps(data, ensure_ascii=False, indent=2))
 
 
@@ -243,6 +250,34 @@ def _print_material(m: Material) -> None:
     if m.files:
         print(f"  files       {len(m.files)}: " + ", ".join(m.files[:8]))
     print(f"  download    {m.download_url}")
+
+
+def _fmt_remaining(n: int | None) -> str:
+    return "unknown" if n is None else str(n)
+
+
+def _human_size(n: int | None) -> str:
+    size = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{int(size)} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
+def _print_quota(data: dict) -> None:
+    print(f"downloads remaining today: {_fmt_remaining(data.get('download_remaining'))}")
+
+
+def _print_login(data: dict) -> None:
+    print(f"logged in · {_fmt_remaining(data.get('quota_remaining'))} downloads remaining today")
+
+
+def _print_download(data: dict) -> None:
+    for d in data.get("downloads", []):
+        size = _human_size(d.get("bytes"))
+        print(f"[{d['id']}] {d['filename']} → {d['path']} ({size})")
+    print(f"  {_fmt_remaining(data.get('quota_remaining'))} downloads remaining today")
 
 
 if __name__ == "__main__":
