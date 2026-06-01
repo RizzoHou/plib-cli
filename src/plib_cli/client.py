@@ -18,7 +18,7 @@ import requests
 from bs4 import BeautifulSoup
 
 from . import config, parsers
-from .config import Credentials, QuotaCounter
+from .config import DAILY_QUOTA, Credentials
 from .errors import (
     AuthError,
     CredentialsError,
@@ -27,7 +27,7 @@ from .errors import (
     ParseError,
     QuotaError,
 )
-from .models import DownloadResult, Material, SearchPage
+from .models import DownloadResult, Material, Profile, SearchPage
 
 _USER_AGENT = "plib-cli/0.1 (+https://github.com/RizzoHou/plib-cli)"
 _FILENAME_RE = re.compile(r"filename\*?=(?:UTF-8'')?\"?([^\";]+)\"?", re.IGNORECASE)
@@ -44,12 +44,13 @@ class PlibClient:
         base_url: str | None = None,
         credentials: Credentials | None = None,
         timeout: float = 30.0,
-        quota: QuotaCounter | None = None,
     ) -> None:
         self.base_url = (base_url or config.base_url()).rstrip("/")
         self._credentials = credentials
         self.timeout = timeout
-        self.quota = quota or QuotaCounter()
+        # Cache of the server's "remaining downloads today", read lazily from
+        # /profile and decremented as this client downloads (see quota_remaining).
+        self._download_remaining: int | None = None
 
         self.session = requests.Session()
         self.session.headers["User-Agent"] = _USER_AGENT
@@ -227,6 +228,31 @@ class PlibClient:
             results = results[:limit]
         return SearchPage(query=query, page=1, total=total, results=results)
 
+    def profile(self) -> Profile:
+        """Fetch and parse the logged-in account's /profile page.
+
+        Goes through :meth:`_get_html` so it inherits the self-healing re-login
+        (/profile is login-gated like everything else).
+        """
+        return parsers.parse_profile(self._get_html("/profile"))
+
+    def quota_remaining(self, *, refresh: bool = False) -> int | None:
+        """Server-reported downloads remaining today, cached on the client.
+
+        The first call (or ``refresh=True``) reads /profile; later calls return
+        the cached value, which :meth:`download` decrements as it consumes the
+        allowance. Fails **open**: a transient network error or markup drift
+        returns ``None`` (unknown) rather than raising, so a flaky /profile
+        never aborts a download that would otherwise succeed — the server still
+        enforces its own cap on the download itself.
+        """
+        if refresh or self._download_remaining is None:
+            try:
+                self._download_remaining = self.profile().download_remaining
+            except (NetworkError, ParseError):
+                return None
+        return self._download_remaining
+
     def material(self, material_id: int) -> Material:
         html = self._get_html(f"/material/{material_id}")
         mat = parsers.parse_material(html, mid=material_id, base_url=self.base_url)
@@ -241,11 +267,13 @@ class PlibClient:
         *,
         force: bool = False,
     ) -> DownloadResult:
-        if not force and self.quota.remaining() <= 0:
-            raise QuotaError(
-                f"daily download quota reached ({self.quota.limit}/day). "
-                "Use --force to attempt anyway, or wait for the daily reset."
-            )
+        if not force:
+            remaining = self.quota_remaining()
+            if remaining is not None and remaining <= 0:
+                raise QuotaError(
+                    f"no downloads remaining today (server cap is {DAILY_QUOTA}/day). "
+                    "Use --force to attempt anyway, or wait for the daily reset."
+                )
 
         resp = self._request("GET", f"/download/{material_id}", allow_redirects=True)
         if resp.status_code == 404:
@@ -274,14 +302,16 @@ class PlibClient:
             out_path = dest / filename
         out_path.write_bytes(resp.content)
 
-        used = self.quota.increment()
+        # Reflect the consumed download in the cached server figure (if known),
+        # so a batch and the final report stay accurate without re-fetching.
+        if self._download_remaining is not None:
+            self._download_remaining = max(0, self._download_remaining - 1)
         return DownloadResult(
             id=material_id,
             path=str(out_path),
             filename=filename,
             bytes=len(resp.content),
-            quota_used=used,
-            quota_limit=self.quota.limit,
+            quota_remaining=self._download_remaining,
         )
 
 

@@ -14,7 +14,7 @@ import re
 
 from bs4 import BeautifulSoup
 
-from .models import Material, SearchPage, SearchResult
+from .models import Material, Profile, SearchPage, SearchResult
 
 # Closed set of material types, taken from the search filter UI. Used to pick
 # the type badge out of the page without depending on its CSS classes.
@@ -137,6 +137,20 @@ def parse_material(html: str, mid: int, base_url: str) -> Material:
         url=f"{base_url}/material/{mid}",
         download_url=f"{base_url}/download/{mid}",
     )
+
+
+def parse_profile(html: str) -> Profile:
+    """Parse the logged-in /profile page.
+
+    The remaining-downloads figure is the server's authoritative quota — the
+    page renders ``今日剩余下载次数`` followed by the count. Anchored on that
+    label string (not the volatile Tailwind classes), like the other parsers;
+    if the markup drifts, ``download_remaining`` falls to ``None`` and the
+    fixture test in ``test_parsers.py`` flags it.
+    """
+    flat = _soup(html).get_text(" ", strip=True)
+    m = re.search(r"今日剩余下载次数\s*(\d+)", flat)
+    return Profile(download_remaining=int(m.group(1)) if m else None)
 
 
 def _material_description(soup: BeautifulSoup) -> str | None:

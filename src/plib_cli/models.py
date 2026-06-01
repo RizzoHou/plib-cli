@@ -2,7 +2,9 @@
 
 These are the JSON contract consumed by pku-captain's Tool wrapper (same
 pattern as its ``pku3b`` JSON consumption). Field names are stable; add,
-don't rename.
+don't rename. (One deliberate pre-consumer exception: ``DownloadResult``'s
+``quota_used``/``quota_limit`` became the single ``quota_remaining`` when the
+quota source moved from a local counter to the server's /profile figure.)
 """
 
 from __future__ import annotations
@@ -79,15 +81,29 @@ class Material:
 
 
 @dataclass
+class Profile:
+    """The logged-in account's /profile page (currently just the quota)."""
+
+    download_remaining: int | None
+
+    def to_dict(self) -> dict:
+        return asdict(self)
+
+
+@dataclass
 class DownloadResult:
-    """Outcome of a single download attempt."""
+    """Outcome of a single download attempt.
+
+    ``quota_remaining`` is the server's own ``今日剩余下载次数`` figure (read
+    from /profile), decremented to reflect this download; ``None`` if the
+    server quota could not be read.
+    """
 
     id: int
     path: str
     filename: str
     bytes: int
-    quota_used: int
-    quota_limit: int
+    quota_remaining: int | None
 
     def to_dict(self) -> dict:
         return asdict(self)

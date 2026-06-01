@@ -37,6 +37,7 @@ plib show 727                                # full detail for one material
 plib download 1544 -o ./materials            # download by id
 plib download 1544 1571 1313                 # several at once
 plib login                                   # force a fresh login (rarely needed)
+plib quota                                    # downloads remaining today (from /profile)
 ```
 
 Output format is **JSON when stdout is piped** (agent use) and a **human table** in an interactive terminal. Force either with `--format json|table` (works before or after the subcommand).
@@ -51,7 +52,7 @@ Output format is **JSON when stdout is piped** (agent use) and a **human table**
 
 ### Download quota
 
-A normal account has a **10-downloads-per-day** server limit. The CLI mirrors it with a local per-day counter (in `~/.cache/plib-cli/quota.json`) and refuses past 10 with exit code 1 / `quota_exceeded`, reporting `quota_remaining` in every download response. Override the local guard with `--force` (the server still enforces its own cap).
+A normal account has a **10-downloads-per-day** server limit. The CLI reads the server's own remaining count from `/profile` (the `今日剩余下载次数` figure), refuses early with exit code 1 / `quota_exceeded` once it hits 0, and reports `quota_remaining` in every download response. Check it anytime with `plib quota`. Override the early guard with `--force` (the server still enforces its own cap). If `/profile` can't be read (transient network error or markup change), the guard fails open and the download proceeds — the server remains the backstop.
 
 ## JSON contract
 
@@ -66,6 +67,7 @@ Exit codes: `0` success, `1` handled error (`PlibError`), `2` bad usage. Error `
 
 `search` → `{query, page, total, count, results:[{id, title, type, description, course, department, semester, uploader, date, downloads, views, favorites, url}]}`. `total` is the site's full result count; `count` is how many are in `results`. In the default auto-paginate mode `count` equals `total` (or `--limit`) and `page` is `1`; a `count` below `total` means the result was capped (by `--limit` or the page safety cap).
 `show` → a material with the above plus `course_id, department_id, upload_time, file_type, files[], download_url`.
+`download` → `{downloads:[{id, path, filename, bytes, quota_remaining}], quota_remaining}`. `quota` → `{download_remaining}`. Both `quota_remaining` and `download_remaining` are the server's `今日剩余下载次数`, or `null` if `/profile` couldn't be read.
 
 ## Use from pku-captain
 

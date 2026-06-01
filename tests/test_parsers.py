@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from plib_cli.parsers import parse_material, parse_search
+from plib_cli.parsers import parse_material, parse_profile, parse_search
 
 FIXTURES = Path(__file__).parent / "fixtures"
 BASE = "https://pkuhub.cn"
@@ -25,6 +25,11 @@ def search_html() -> str:
 @pytest.fixture
 def material_html() -> str:
     return (FIXTURES / "material.html").read_text(encoding="utf-8")
+
+
+@pytest.fixture
+def profile_html() -> str:
+    return (FIXTURES / "profile.html").read_text(encoding="utf-8")
 
 
 def test_search_returns_full_page(search_html: str) -> None:
@@ -77,6 +82,14 @@ def test_material_detail(material_html: str) -> None:
     # File tree parsed (this material is a populated zip); names are non-empty.
     assert m.files
     assert all(isinstance(f, str) and f for f in m.files)
+
+
+def test_profile_quota(profile_html: str) -> None:
+    # The server's authoritative "remaining downloads today" — the figure that
+    # replaced the old local counter. Drift in the 今日剩余下载次数 markup breaks
+    # this loudly instead of silently returning None at runtime.
+    p = parse_profile(profile_html)
+    assert p.download_remaining == 6
 
 
 def test_search_sort_values_match_site(search_html: str) -> None:

@@ -34,7 +34,7 @@ class NotFoundError(PlibError):
 
 
 class QuotaError(PlibError):
-    """The daily download quota would be exceeded (local guard or server)."""
+    """The daily download quota would be exceeded (early client guard or server)."""
 
     code = "quota_exceeded"
 

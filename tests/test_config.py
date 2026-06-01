@@ -1,28 +1,12 @@
-"""Tests for credential resolution and the daily-quota counter (no network)."""
+"""Tests for credential resolution (no network).
+
+The daily download quota is no longer tracked locally — it's read from the
+server's /profile page, so its parser is covered in ``test_parsers.py``.
+"""
 
 from __future__ import annotations
 
-import json
-
-from plib_cli.config import Credentials, QuotaCounter, load_credentials
-
-
-def test_quota_counts_and_resets(tmp_path) -> None:
-    counter = QuotaCounter(path=tmp_path / "quota.json", limit=3)
-    assert counter.used() == 0
-    assert counter.remaining() == 3
-    counter.increment()
-    counter.increment()
-    assert counter.used() == 2
-    assert counter.remaining() == 1
-
-
-def test_quota_resets_on_date_rollover(tmp_path) -> None:
-    path = tmp_path / "quota.json"
-    path.write_text(json.dumps({"date": "2000-01-01", "count": 9}), encoding="utf-8")
-    counter = QuotaCounter(path=path, limit=10)
-    assert counter.used() == 0  # stale date → reset
-    assert counter.remaining() == 10
+from plib_cli.config import Credentials, load_credentials
 
 
 def test_credentials_from_env(monkeypatch) -> None:

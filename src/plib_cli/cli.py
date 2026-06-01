@@ -109,7 +109,9 @@ def _build_parser() -> argparse.ArgumentParser:
     d.add_argument("ids", type=int, nargs="+", help="material id(s) to download")
     d.add_argument("-o", "--output", default=".", help="destination directory")
     d.add_argument(
-        "--force", action="store_true", help="ignore the local daily-quota guard"
+        "--force",
+        action="store_true",
+        help="ignore the server-reported remaining-quota guard",
     )
     d.set_defaults(handler=_cmd_download)
 
@@ -117,6 +119,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "login", help="log in and cache the session", parents=[common]
     )
     lg.set_defaults(handler=_cmd_login)
+
+    q = sub.add_parser(
+        "quota", help="show downloads remaining today (from /profile)", parents=[common]
+    )
+    q.set_defaults(handler=_cmd_quota)
 
     return parser
 
@@ -155,12 +162,16 @@ def _cmd_download(client: PlibClient, args) -> dict:
     results = []
     for mid in args.ids:
         results.append(client.download(mid, args.output, force=args.force).to_dict())
-    return {"downloads": results, "quota_remaining": client.quota.remaining()}
+    return {"downloads": results, "quota_remaining": client.quota_remaining()}
 
 
 def _cmd_login(client: PlibClient, args) -> dict:
     client.login()
-    return {"status": "logged_in", "quota_remaining": client.quota.remaining()}
+    return {"status": "logged_in", "quota_remaining": client.quota_remaining()}
+
+
+def _cmd_quota(client: PlibClient, args) -> dict:
+    return client.profile().to_dict()
 
 
 # -- output --------------------------------------------------------------

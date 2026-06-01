@@ -11,15 +11,18 @@ shell, an agent, and local development:
 
 Session cookies persist in ``~/.cache/plib-cli/cookies.txt`` (overridable via
 ``PLIB_CACHE_DIR``) so login survives across invocations — essential for a CLI
-that agents call once per action. The quota counter lives beside it.
+that agents call once per action.
+
+The download quota is no longer mirrored locally: the server reports the true
+remaining count on /profile, which the client reads directly (see
+``PlibClient.quota_remaining``). :data:`DAILY_QUOTA` is kept only as the known
+account cap used in the over-quota error message.
 """
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass
-from datetime import date
 from http.cookiejar import LWPCookieJar
 from pathlib import Path
 
@@ -90,41 +93,3 @@ def cache_dir() -> Path:
 
 def cookie_jar() -> LWPCookieJar:
     return LWPCookieJar(str(cache_dir() / "cookies.txt"))
-
-
-class QuotaCounter:
-    """Tracks downloads used today, persisted to ``quota.json``.
-
-    The server enforces its own daily cap; this local mirror lets the CLI
-    refuse early (no wasted attempt, clear budget for agents) and report the
-    remaining allowance in the JSON envelope. It resets when the date rolls
-    over. ``limit`` defaults to :data:`DAILY_QUOTA`.
-    """
-
-    def __init__(self, path: Path | None = None, limit: int = DAILY_QUOTA) -> None:
-        self.path = path or (cache_dir() / "quota.json")
-        self.limit = limit
-
-    def _load(self) -> tuple[str, int]:
-        today = date.today().isoformat()
-        try:
-            data = json.loads(self.path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return today, 0
-        if data.get("date") != today:
-            return today, 0
-        return today, int(data.get("count", 0))
-
-    def used(self) -> int:
-        return self._load()[1]
-
-    def remaining(self) -> int:
-        return max(0, self.limit - self.used())
-
-    def increment(self) -> int:
-        today, count = self._load()
-        count += 1
-        self.path.write_text(
-            json.dumps({"date": today, "count": count}), encoding="utf-8"
-        )
-        return count
