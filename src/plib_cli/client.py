@@ -193,6 +193,10 @@ class PlibClient:
         if _is_login_redirect(resp):
             raise AuthError("not authenticated for download and re-login failed")
         if resp.status_code != 200:
+            # Note: if the server ever rejects an over-quota download by status
+            # code (403/429) rather than an HTML body, it surfaces here as a
+            # network_error, not quota_exceeded. Observed behaviour is an HTML
+            # body (handled just below); revisit if a status-code path appears.
             raise NetworkError(f"download returned HTTP {resp.status_code}")
 
         content_type = resp.headers.get("Content-Type", "")
